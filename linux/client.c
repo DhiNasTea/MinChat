@@ -3,7 +3,7 @@
 */
 #include "socketUtils.h"
 
-#pragma comment(lib,"ws2_32.lib") //Winsock Library
+// #pragma comment(lib,"ws2_32.lib") //Winsock Library
 
 int main(int argc , char *argv[])
 {

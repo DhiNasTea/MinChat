@@ -4,11 +4,12 @@
 #include<winsock2.h>
 #include <string.h>
 #include <malloc.h>
+#include <WS2tcpip.h>
 
 
 
 
 struct sockaddr_in* createIPv4Address(char *ip, int port);
 
-int createTCPIpv4Socket();
+SOCKET createTCPIpv4Socket();
 

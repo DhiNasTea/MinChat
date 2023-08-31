@@ -4,7 +4,7 @@ To compile the code in the current state, execute the following line in the comm
 
 Client side:
 ```bash
-gcc -o minchat_client.exe client.c -lwsock32
+gcc client.c socketUtils.c -o minchat_client.exe -lwsock32 -lws2_32
 ```
 
 Server side:
