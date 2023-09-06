@@ -3,7 +3,11 @@
 */
 #include "socketUtils.h"
 #include <stdbool.h>
-#include <unistd.h>
+#include <stdio.h>
+#define LINELIMIT 200
+#define NAMELIMIT 20
+
+// #include <unistd.h>
 
 void startListeningAndPrintMessagesOnNewThread(int fd);
 
@@ -11,12 +15,14 @@ DWORD WINAPI listenAndPrint(void* socketFD);
 
 void readConsoleEntriesAndSendToServer(int socketFD);
 
+void cleanupAndExit(int socketFD, int errorPresent, int errNo);
+
 int main(int argc , char *argv[])
 {
 	WSADATA wsa;
 	SOCKET s;
 	struct sockaddr_in server;
-	char *message , server_reply[2000];
+	char server_reply[2000];
 	int recv_size;
 
 	printf("\nInitialising Winsock...\n");
@@ -42,9 +48,6 @@ int main(int argc , char *argv[])
 	server.sin_family = AF_INET;
 	server.sin_port = htons( 8000 );
 
-	// print port
-	printf("%i\n", htons(server.sin_port));
-
 	//Connect to remote server
 	if (connect(s , (struct sockaddr *)&server , sizeof(server)) < 0)
 	{
@@ -54,67 +57,69 @@ int main(int argc , char *argv[])
 	
 	printf("Connected\n");
 	
-	// //Send some data
-	// message = "GET / HTTP/1.1\r\n\r\n";
-	// if( send(s , message , strlen(message) , 0) < 0)
+	// //Receive a reply from the server
+	// if((recv_size = recv(s , server_reply , 2000 , 0)) == SOCKET_ERROR)
 	// {
-	// 	printf("Send failed");
-	// 	return 1;
+	// 	printf("recv failed\n");
+	// 	printf("recv_size: %i\n", recv_size);
+	// 	// perror("recv");
+	// 	getchar();
 	// }
-	// printf("Data Send\n");
 	
-	//Receive a reply from the server
-	if((recv_size = recv(s , server_reply , 2000 , 0)) == SOCKET_ERROR)
-	{
-		printf("recv failed\n");
-		printf("recv_size: %i\n", recv_size);
-		// perror("recv");
-		getchar();
-	}
-	
-	printf("Reply received\n");
+	// printf("Reply received\n");
 
-	//Add a NULL terminating character to make it a proper string before printing
-	server_reply[recv_size] = '\0';
-	printf("reply: %s, size of reply: %i", server_reply, recv_size);
+	// //Add a NULL terminating character to make it a proper string before printing
+	// server_reply[recv_size] = '\0';
+	// printf("reply: %s, size of reply: %i", server_reply, recv_size);
 
+	startListeningAndPrintMessagesOnNewThread(s);
+
+    readConsoleEntriesAndSendToServer(s);
+
+	close(s);
 	return 0;
 }
 
 void readConsoleEntriesAndSendToServer(int socketFD) {
-    char *name = NULL;
-    size_t nameSize= 0;
+	char *name;
+    char *line;
+	int iResult;
+
+	name = malloc(LINELIMIT + 1);
+	line = malloc(NAMELIMIT + 1);
+
+	if (line == NULL)
+	{
+		printf("Memory allocation failure");
+		exit(-1);
+	}
+
     printf("please enter your name?\n");
-    ssize_t  nameCount = getline(&name,&nameSize,stdin);
-    name[nameCount-1]=0;
+	fgets(name, LINELIMIT+1, stdin);
 
-
-    char *line = NULL;
-    size_t lineSize= 0;
     printf("type and we will send(type exit)...\n");
+    char buffer[250];
 
-
-    char buffer[1024];
-
-    while(true)
+    while(fgets(line, LINELIMIT+1, stdin) != NULL)
     {
-
-
-        ssize_t  charCount = getline(&line,&lineSize,stdin);
-        line[charCount-1]=0;
 
         sprintf(buffer,"%s:%s",name,line);
 
-        if(charCount>0)
-        {
-            if(strcmp(line,"exit")==0)
-                break;
+		if(strcmp(line,"exit")==0)
+			break;
 
-            ssize_t amountWasSent =  send(socketFD,
-                                          buffer,
-                                          strlen(buffer), 0);
-        }
+		// POTENTIAL BUG, does strlen stop at the null terminator of name?
+		iResult =  send(socketFD,
+						buffer,
+						(int)strlen(buffer), 0);
+		
+		if (iResult == SOCKET_ERROR) {
+			free(line);
+			cleanupAndExit(socketFD, 1, iResult);
+		}
     }
+
+	free(line);
 }
 
 void startListeningAndPrintMessagesOnNewThread(int socketFD) {
@@ -124,22 +129,45 @@ void startListeningAndPrintMessagesOnNewThread(int socketFD) {
 }
 
 DWORD WINAPI listenAndPrint(void* socketFD) {
-    char buffer[1024];
+    char buffer[LINELIMIT+1];
+	int iResult;
 
-    while (true)
+    while (iResult = recv((int)socketFD,buffer,LINELIMIT + 1,0) > 0)
     {
-        ssize_t  amountReceived = recv((int)socketFD,buffer,1024,0);
-
-        if(amountReceived>0)
-        {
-            buffer[amountReceived] = 0;
-            printf("Response was %s\n ",buffer);
-        }
-
-        if(amountReceived==0)
-            break;
+        buffer[iResult] = 0;
+        printf("Response was %s\n ",buffer);
+        
     }
+
+	if(iResult == 0)
+	{
+		printf("Connection was closed...");
+	}
+	else
+	{
+        printf("recv failed: %d\n", WSAGetLastError());
+	}
 
     close((int)socketFD);
 	return 0;
+}
+
+void cleanupAndExit(int socketFD, int errorPresent, int errNo)
+{
+	if (errorPresent == 1)
+	{
+		wprintf(L"send failed with error: %d\n", WSAGetLastError());
+		closesocket(socketFD);
+		WSACleanup();
+		exit(-1);
+	}
+	else
+	{
+		printf("Gracefully shutting down...");
+		closesocket(socketFD);
+		WSACleanup();
+		printf("bye!");
+		exit(-1);
+	}
+	
 }
