@@ -42,11 +42,18 @@ int main(int argc , char *argv[])
 
 	printf("Socket created.\n");
 	
-	
-	// server.sin_addr.s_addr = inet_addr("74.125.235.20");
-	server.sin_addr.s_addr = inet_addr("127.0.0.1");
 	server.sin_family = AF_INET;
-	server.sin_port = htons( 8000 );
+	if (argc == 3)
+	{
+		server.sin_addr.s_addr = inet_addr(argv[1]);
+		server.sin_port = htons( atoi(argv[2]) );
+	}
+	else
+	{
+		server.sin_addr.s_addr = inet_addr("127.0.0.1");
+		server.sin_port = htons( 8765 );
+	}
+	
 
 	//Connect to remote server
 	if (connect(s , (struct sockaddr *)&server , sizeof(server)) < 0)
@@ -85,8 +92,8 @@ void readConsoleEntriesAndSendToServer(int socketFD) {
     char *line;
 	int iResult;
 
-	name = malloc(LINELIMIT + 1);
-	line = malloc(NAMELIMIT + 1);
+	name = malloc(NAMELIMIT + 1);
+	line = malloc(LINELIMIT + 1);
 
 	if (line == NULL)
 	{
@@ -95,23 +102,26 @@ void readConsoleEntriesAndSendToServer(int socketFD) {
 	}
 
     printf("please enter your name?\n");
-	fgets(name, LINELIMIT+1, stdin);
+	fgets(name, NAMELIMIT+1, stdin);
+	name[strcspn(name, "\n")] = 0;
 
     printf("type and we will send(type exit)...\n");
-    char buffer[250];
+    char buffer[LINELIMIT+NAMELIMIT+1];
 
     while(fgets(line, LINELIMIT+1, stdin) != NULL)
     {
-
-        sprintf(buffer,"%s:%s",name,line);
+		line[strcspn(line, "\n")] = 0;
+        sprintf(buffer,"%s > %s",name,line);
+		// printf("before sending: %s", buffer);
 
 		if(strcmp(line,"exit")==0)
 			break;
 
-		// POTENTIAL BUG, does strlen stop at the null terminator of name?
+		// TODO: POTENTIAL BUG, does strlen stop at the null terminator of name?
 		iResult =  send(socketFD,
 						buffer,
-						(int)strlen(buffer), 0);
+						(int)strlen(buffer),
+						0);
 		
 		if (iResult == SOCKET_ERROR) {
 			free(line);
@@ -125,20 +135,38 @@ void readConsoleEntriesAndSendToServer(int socketFD) {
 void startListeningAndPrintMessagesOnNewThread(int socketFD) {
 
     HANDLE id ;
-    CreateThread(NULL, 0,listenAndPrint,&socketFD, 0, NULL);
+	int * argsThread[1];
+	argsThread[0] = (int *) malloc(sizeof(int));
+
+	if (argsThread[0] == NULL)
+	{
+		// If the array allocation fails, the system is out of memory
+        // so there is no point in trying to print an error message.
+        // Just terminate execution.
+    	ExitProcess(2);
+	}
+
+	* argsThread[0] = socketFD;
+    CreateThread(NULL, 0,listenAndPrint, argsThread[0], 0, NULL);
 }
 
 DWORD WINAPI listenAndPrint(void* socketFD) {
-    char buffer[LINELIMIT+1];
+	// check if size should be bigger is username is sent
+    char buffer[LINELIMIT+NAMELIMIT+1];
 	int iResult;
+	int * argsThread = (int *) socketFD;
 
-    while (iResult = recv((int)socketFD,buffer,LINELIMIT + 1,0) > 0)
+    while (true)
     {
+		iResult = recv(*argsThread,buffer,LINELIMIT + NAMELIMIT + 1,0);
+		if (iResult <= 0)
+		{
+			break;
+		}
         buffer[iResult] = 0;
-        printf("Response was %s\n ",buffer);
+        printf("%s\n ",buffer);
         
     }
-
 	if(iResult == 0)
 	{
 		printf("Connection was closed...");
@@ -148,7 +176,7 @@ DWORD WINAPI listenAndPrint(void* socketFD) {
         printf("recv failed: %d\n", WSAGetLastError());
 	}
 
-    close((int)socketFD);
+    close(*argsThread);
 	return 0;
 }
 
