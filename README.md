@@ -1,3 +1,8 @@
+# MinChat
+MinChat is a minimal implementation for public chatrooms. 
+
+Only one computer is needed to host a server for users to connect to it and start chatting. This project uses C sockets and currently offers binairies for Windows machine.
+
 # Compilation
 ### Windows
 To compile the code in the current state, execute the following line in the command prompt
